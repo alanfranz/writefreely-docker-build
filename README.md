@@ -12,15 +12,16 @@ The release that gets built is set in `WRITEFREELY_VERSION`.
 
 Same as the upstream image, so upstream docs apply:
 
-- working dir `/go`, runs as `daemon`
+- working dir `/go`, runs as uid/gid `2` (`daemon`)
 - config: `/go/config.ini`
 - keys: `/go/keys` (volume)
 - listens on `8080`
-- `writefreely` is on `PATH`
+- `writefreely` is on `PATH`, e.g. `podman exec <ctr> writefreely user create ...`
 
-No `HEALTHCHECK` is baked in (OCI images don't carry one); with podman add
-`--health-cmd 'wget -q --spider http://localhost:8080/ || exit 1'`, or
-`HealthCmd=` in a Quadlet `.container` file.
+The image is `FROM scratch` and is a single layer: a static binary, its
+templates/static assets, CA certificates and `/tmp`. There is no shell,
+`wget`, package manager or timezone database (WriteFreely doesn't use one),
+so a `HEALTHCHECK` cannot be run inside the container.
 
 ## Local build
 

@@ -1,6 +1,9 @@
 # Builds WriteFreely from an upstream release tag on current Go/Alpine.
 # Filesystem layout matches the upstream image (WORKDIR /go, config at
 # /go/config.ini, keys in /go/keys) so upstream docs and compose files apply.
+#
+# The final image is FROM scratch: a static binary, its assets, CA certs and
+# a writable /tmp, all in a single layer. There is no shell or package manager.
 
 ARG GO_VERSION=1.27
 ARG ALPINE_VERSION=3.24
@@ -26,23 +29,34 @@ RUN make -C less \
     && OPENSSL_CONF=/src/ossl_legacy.cnf npm run-script build
 
 RUN cd cmd/writefreely \
-    && CGO_ENABLED=1 go build -trimpath -tags 'netgo sqlite' \
+    && CGO_ENABLED=1 go build -trimpath -buildvcs=false -tags 'netgo osusergo sqlite' \
       -ldflags "-s -w -X 'github.com/writefreely/writefreely.softwareVer=${WRITEFREELY_VERSION}' -extldflags '-static'" \
-      -o /stage/cmd/writefreely/writefreely . \
-    && cp -R /src/templates /src/static /src/pages /stage/ \
-    && mkdir /stage/keys
+      -o /rootfs/go/cmd/writefreely/writefreely .
+
+# Assemble the final filesystem. Only runtime assets are copied: no sources,
+# no dotfiles.
+RUN set -e; \
+    cp -R /src/templates /src/static /src/pages /rootfs/go/; \
+    find /rootfs/go -name '.*' -type f -delete; \
+    mkdir -p /rootfs/go/static/local /rootfs/go/keys \
+      /rootfs/etc/ssl/certs /rootfs/usr/local/bin /rootfs/tmp; \
+    chmod 1777 /rootfs/tmp; \
+    cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/; \
+    ln -s /go/cmd/writefreely/writefreely /rootfs/usr/local/bin/writefreely; \
+    printf 'root:x:0:0:root:/root:/sbin/nologin\ndaemon:x:2:2:daemon:/go:/sbin/nologin\n' >/rootfs/etc/passwd; \
+    printf 'root:x:0:\ndaemon:x:2:\n' >/rootfs/etc/group; \
+    chown -R 2:2 /rootfs/go
 
 
-FROM docker.io/library/alpine:${ALPINE_VERSION}
+FROM scratch
 
-RUN apk add --no-cache ca-certificates openssl tzdata \
-    && ln -s /go/cmd/writefreely/writefreely /usr/local/bin/writefreely
+COPY --from=build /rootfs /
 
-COPY --from=build --chown=daemon:daemon /stage /go
-
+ENV PATH=/usr/local/bin \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /go
 VOLUME /go/keys
 EXPOSE 8080
-USER daemon
+USER 2:2
 
 ENTRYPOINT ["/go/cmd/writefreely/writefreely"]
