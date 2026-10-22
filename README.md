@@ -1,8 +1,8 @@
 # writefreely container image
 
 Builds [WriteFreely](https://github.com/writefreely/writefreely) from an upstream
-release tag on current Go and Alpine, and publishes a multi-arch
-(`linux/amd64`, `linux/arm64`) OCI image to GHCR:
+release tag on current Go and Alpine, and publishes a
+`linux/amd64` OCI image to GHCR:
 
     ghcr.io/alanfranz/writefreely:<version>
 
@@ -26,10 +26,10 @@ No `HEALTHCHECK` is baked in (OCI images don't carry one); with podman add
 
 Requires podman (set `PODMAN=docker` to use docker instead).
 
-    make build   # host arch, tagged ghcr.io/alanfranz/writefreely:<version>-<arch>
+    make build   # linux/amd64, tagged ghcr.io/alanfranz/writefreely:<version>
     make test    # boots it with a throwaway SQLite config and fetches /
 
 ## CI
 
-`.github/workflows/build.yml` builds each arch natively on GitHub runners,
-smoke-tests it, then assembles the manifest list and pushes it (not on PRs).
+`.github/workflows/build.yml` builds and smoke-tests the image on every push and
+PR, and pushes it to GHCR (not on PRs).
