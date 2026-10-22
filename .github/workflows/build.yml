@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure podman is installed
+        run: |
+          command -v podman || { sudo apt-get update && sudo apt-get install -y podman; }
+          podman version
+
+      - name: Build
+        run: make build ARCH=${{ matrix.arch }}
+
+      - name: Smoke test
+        run: make test ARCH=${{ matrix.arch }}
+
+      - name: Export image
+        run: make save ARCH=${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.arch }}
+          path: dist/writefreely-${{ matrix.arch }}.tar
+          retention-days: 3
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          path: dist
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Assemble manifest
+        run: make manifest IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/writefreely
+        shell: bash
+
+      - name: Push
+        run: make push IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/writefreely
+        shell: bash
