@@ -8,6 +8,11 @@ release tag on current Go and Alpine, and publishes a
 
 The release that gets built is set in `WRITEFREELY_VERSION`.
 
+**This image targets single-user deployments** (`single_user = true` in
+`config.ini`). That is the only mode the CI smoke test exercises, and the
+healthcheck below is chosen for it. Multi-user instances will probably run,
+but they are not tested or supported here.
+
 ## Image layout
 
 Same as the upstream image, so upstream docs apply:
@@ -26,10 +31,16 @@ There is no package manager or timezone database (WriteFreely doesn't use one).
 ## Healthcheck
 
 No healthcheck is baked into the image (OCI images can't carry one), so
-declare it when you create the container. WriteFreely serves its front page
-once it's up, so this checks it:
+declare it when you create the container. The check is:
 
-    wget -q --spider http://127.0.0.1:8080/
+    wget -q --spider http://127.0.0.1:8080/login
+
+Don't check `/`. On a single-user instance `/` is the blog itself, and it
+returns 404 until the admin user has been created (`writefreely user create
+--admin ...`). A check on `/` would report a freshly deployed container as
+unhealthy, and with `HealthOnFailure=kill` it would be restarted over and over
+before you get a chance to create that user. `/login` returns 200 whether or
+not the admin exists. The CI smoke test checks both states.
 
 Use the port from `[server] port` in `config.ini` if you changed it.
 
@@ -39,7 +50,7 @@ With `podman run`:
       -v ./config.ini:/go/config.ini:ro,Z \
       -v writefreely-keys:/go/keys \
       -p 8080:8080 \
-      --health-cmd 'wget -q --spider http://127.0.0.1:8080/' \
+      --health-cmd 'wget -q --spider http://127.0.0.1:8080/login' \
       --health-interval 30s --health-retries 3 --health-start-period 10s \
       ghcr.io/alanfranz/writefreely:0.17.2
 
@@ -56,7 +67,7 @@ With a Quadlet unit (`~/.config/containers/systemd/writefreely.container`):
     Volume=%h/writefreely/config.ini:/go/config.ini:ro,Z
     Volume=writefreely-keys:/go/keys
     PublishPort=8080:8080
-    HealthCmd=wget -q --spider http://127.0.0.1:8080/
+    HealthCmd=wget -q --spider http://127.0.0.1:8080/login
     HealthInterval=30s
     HealthRetries=3
     HealthStartPeriod=10s
@@ -74,7 +85,7 @@ With a Quadlet unit (`~/.config/containers/systemd/writefreely.container`):
 With docker / compose, the same command goes in `healthcheck.test`:
 
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/login"]
       interval: 30s
       retries: 3
       start_period: 10s
@@ -84,7 +95,7 @@ With docker / compose, the same command goes in `healthcheck.test`:
 Requires podman (set `PODMAN=docker` to use docker instead).
 
     make build   # linux/amd64, tagged ghcr.io/alanfranz/writefreely:<version>
-    make test    # boots it with a throwaway SQLite config and fetches /
+    make test    # boots a throwaway single-user SQLite instance and runs the healthcheck
 
 ## CI
 
