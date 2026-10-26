@@ -3,7 +3,9 @@ name: build
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
   workflow_dispatch:
 
 permissions:
@@ -12,11 +14,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # Publishing runs one at a time, in order, so latest always ends up on
+    # the highest build number. PR runs don't publish and aren't serialized.
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.run_id) || 'publish' }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/writefreely
+      # Images are tagged <writefreely version>_<run number>. run_number is
+      # sequential per workflow and never reused; a re-run keeps it, and the
+      # push step then refuses to overwrite the existing tag.
+      BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
