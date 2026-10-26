@@ -103,6 +103,17 @@ With docker / compose, the same command goes in `healthcheck.test`:
       retries: 3
       start_period: 10s
 
+## Go and Alpine versions
+
+The `Containerfile` builds on `golang:<GO_VERSION>-alpine<ALPINE_VERSION>`
+(e.g. `1.27-alpine3.24`). These are floating tags, and `make build` pulls with
+`--pull=newer`, so every build uses the newest Go and Alpine patch releases.
+`GO_MIN_VERSION` and `ALPINE_MIN_VERSION` set the oldest patch releases that
+are acceptable (e.g. `1.27.3`, `3.24.3`). The build fails if the pulled base
+image is older, for example because a stale image is still cached locally.
+Raise them when a release you need comes out. All four are build args, so
+they can also be overridden with `--build-arg`.
+
 ## Local build
 
 Requires podman (set `PODMAN=docker` to use docker instead).

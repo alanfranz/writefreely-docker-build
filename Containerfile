@@ -6,10 +6,28 @@
 # a writable /tmp and a static busybox (only for /bin/sh and wget, so
 # healthchecks can run), all in a single layer.
 
+# GO_VERSION and ALPINE_VERSION pick the base image tag; they are floating
+# tags (and `make build` pulls with --pull=newer), so the newest patch
+# releases get used. The *_MIN_VERSION args are the oldest patch releases
+# that are acceptable: the build fails if the base image is older.
 ARG GO_VERSION=1.27
+ARG GO_MIN_VERSION=1.27.3
 ARG ALPINE_VERSION=3.24
+ARG ALPINE_MIN_VERSION=3.24.3
 
 FROM docker.io/library/golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS build
+
+ARG GO_MIN_VERSION
+ARG ALPINE_MIN_VERSION
+# apk version -t prints <, = or > comparing its two arguments.
+RUN set -e; \
+    go=$(go env GOVERSION); go=${go#go}; \
+    alpine=$(cat /etc/alpine-release); \
+    echo "Go ${go} (minimum ${GO_MIN_VERSION}), Alpine ${alpine} (minimum ${ALPINE_MIN_VERSION})"; \
+    [ "$(apk version -t "${go}" "${GO_MIN_VERSION}")" != "<" ] \
+      || { echo "Go ${go} is older than GO_MIN_VERSION ${GO_MIN_VERSION}" >&2; exit 1; }; \
+    [ "$(apk version -t "${alpine}" "${ALPINE_MIN_VERSION}")" != "<" ] \
+      || { echo "Alpine ${alpine} is older than ALPINE_MIN_VERSION ${ALPINE_MIN_VERSION}" >&2; exit 1; }
 
 ARG WRITEFREELY_VERSION
 RUN test -n "${WRITEFREELY_VERSION}" || { echo "WRITEFREELY_VERSION build arg is required" >&2; exit 1; }
